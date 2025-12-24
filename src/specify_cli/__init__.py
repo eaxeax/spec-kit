@@ -936,37 +936,57 @@ def download_and_extract_template(
     client: httpx.Client = None,
     debug: bool = False,
     github_token: str = None,
+    local_dir: Path | None = None,
 ) -> Path:
     """Download the latest release and extract it to create a new project.
     Returns project_path. Uses tracker if provided (with keys: fetch, download, extract, cleanup)
+
+    If local_dir is provided, loads template from local directory instead of GitHub.
     """
     current_dir = Path.cwd()
+    is_local = local_dir is not None
+    zip_path: Path | None = None
+    meta: dict | None = None
 
     if tracker:
-        tracker.start("fetch", "contacting GitHub API")
+        if is_local:
+            tracker.start("fetch", "loading from local directory")
+        else:
+            tracker.start("fetch", "contacting GitHub API")
     try:
-        zip_path, meta = download_template_from_github(
-            ai_assistant,
-            current_dir,
-            script_type=script_type,
-            verbose=verbose and tracker is None,
-            show_progress=(tracker is None),
-            client=client,
-            debug=debug,
-            github_token=github_token,
-        )
-        if tracker:
-            tracker.complete(
-                "fetch", f"release {meta['release']} ({meta['size']:,} bytes)"
+        if is_local:
+            zip_path, meta = load_template_from_local(
+                ai_assistant,
+                local_dir,
+                script_type=script_type,
+                verbose=verbose and tracker is None,
             )
-            tracker.add("download", "Download template")
+        else:
+            zip_path, meta = download_template_from_github(
+                ai_assistant,
+                current_dir,
+                script_type=script_type,
+                verbose=verbose and tracker is None,
+                show_progress=(tracker is None),
+                client=client,
+                debug=debug,
+                github_token=github_token,
+            )
+        if tracker:
+            release_info = "local-dev" if is_local else f"release {meta['release']}"
+            tracker.complete("fetch", f"{release_info} ({meta['size']:,} bytes)")
+            tracker.add(
+                "download", "Load template" if is_local else "Download template"
+            )
             tracker.complete("download", meta["filename"])
     except Exception as e:
         if tracker:
             tracker.error("fetch", str(e))
         else:
             if verbose:
-                console.print(f"[red]Error downloading template:[/red] {e}")
+                console.print(
+                    f"[red]Error {'loading' if is_local else 'downloading'} template:[/red] {e}"
+                )
         raise
 
     if tracker:
@@ -1109,14 +1129,21 @@ def download_and_extract_template(
             tracker.complete("extract")
     finally:
         if tracker:
-            tracker.add("cleanup", "Remove temporary archive")
+            tracker.add(
+                "cleanup",
+                "Remove temporary archive" if not is_local else "Skip cleanup (local)",
+            )
 
-        if zip_path.exists():
+        # Only delete downloaded files, not local templates
+        if not is_local and zip_path.exists():
             zip_path.unlink()
             if tracker:
                 tracker.complete("cleanup")
             elif verbose:
                 console.print(f"Cleaned up: {zip_path.name}")
+        elif is_local:
+            if tracker:
+                tracker.complete("cleanup", "local file preserved")
 
     return project_path
 
@@ -1225,6 +1252,11 @@ def init(
         None,
         "--github-token",
         help="GitHub token to use for API requests (or set GH_TOKEN or GITHUB_TOKEN environment variable)",
+    ),
+    local_templates: str = typer.Option(
+        None,
+        "--local-templates",
+        help="Path to local .genreleases directory for development testing (bypasses GitHub download)",
     ),
 ):
     """
@@ -1446,6 +1478,9 @@ def init(
             local_ssl_context = ssl_context if verify else False
             local_client = httpx.Client(verify=local_ssl_context)
 
+            # Convert local_templates to Path if provided
+            local_dir = Path(local_templates) if local_templates else None
+
             download_and_extract_template(
                 project_path,
                 selected_ai,
@@ -1456,6 +1491,7 @@ def init(
                 client=local_client,
                 debug=debug,
                 github_token=github_token,
+                local_dir=local_dir,
             )
 
             ensure_executable_scripts(project_path, tracker=tracker)

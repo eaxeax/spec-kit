@@ -201,9 +201,9 @@ Given that feature description, do this:
 
 ### Language Requirements
 
-**ALL specification content MUST be written in Korean (한글)**
+**ALL specification content MUST be written in Russian (Русский)**
 - Section headings should remain in English for template compatibility
-- All descriptions, requirements, scenarios, and criteria must be in Korean
+- All descriptions, requirements, scenarios, and criteria must be in Russian
 - Technical terms can be kept in English when appropriate (e.g., API, OAuth, JWT)
 
 ## Quick Guidelines
@@ -212,7 +212,7 @@ Given that feature description, do this:
 - Avoid HOW to implement (no tech stack, APIs, code structure).
 - Written for business stakeholders, not developers.
 - DO NOT create any checklists that are embedded in the spec. That will be a separate command.
-- **Write all content in Korean (한글)** - only section headings remain in English
+- **Write all content in Russian (Русский)** - only section headings remain in English
  
 ### Section Requirements
 

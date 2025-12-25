@@ -15,11 +15,11 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Language Requirements
 
-**ALL user interaction and reporting MUST be in Korean (한글)**
-- Progress reports must be in Korean
-- Status tables and summaries must be in Korean
-- Questions to the user must be in Korean
-- Error messages and suggestions must be in Korean
+**ALL user interaction and reporting MUST be in Russian (Русский)**
+- Progress reports must be in Russian
+- Status tables and summaries must be in Russian
+- Questions to the user must be in Russian
+- Error messages and suggestions must be in Russian
 - Code and technical identifiers remain in English
 - Technical terms can be kept in English when appropriate (e.g., API, TDD, CLI)
 

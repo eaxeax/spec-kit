@@ -16,12 +16,12 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Language Requirements
 
-**ALL GitHub issue content MUST be written in Korean (한글)**
-- Issue titles must be in Korean
-- Issue descriptions must be in Korean
+**ALL GitHub issue content MUST be written in Russian (Русский)**
+- Issue titles must be in Russian
+- Issue descriptions must be in Russian
 - Technical terms can be kept in English when appropriate (e.g., API, GitHub)
 - File paths and code identifiers remain in English
-- User interaction and reporting must be in Korean
+- User interaction and reporting must be in Russian
 
 ## Outline
 

@@ -24,13 +24,13 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Language Requirements
 
-**ALL task content MUST be written in Korean (한글)**
+**ALL task content MUST be written in Russian (Русский)**
 - Section headings in tasks.md should remain in English for template compatibility
-- All task descriptions, goals, and criteria must be in Korean
+- All task descriptions, goals, and criteria must be in Russian
 - Technical terms can be kept in English when appropriate (e.g., API, TDD, MVP)
 - File paths and code identifiers remain in English
 - Task IDs and labels remain in English (e.g., T001, [P], [US1])
-- User interaction and reporting must be in Korean
+- User interaction and reporting must be in Russian
 
 ## Outline
 

@@ -169,11 +169,11 @@ Ask the user: "Would you like me to suggest concrete remediation edits for the t
 
 ### Language Requirements
 
-**ALL analysis output MUST be written in Korean (한글)**
+**ALL analysis output MUST be written in Russian (Русский)**
 - Section headings should remain in English for template compatibility
-- All descriptions, findings, recommendations, and summaries must be in Korean
+- All descriptions, findings, recommendations, and summaries must be in Russian
 - Technical terms can be kept in English when appropriate (e.g., API, CRITICAL, HIGH)
-- Report tables should have Korean column headers and content
+- Report tables should have Russian column headers and content
 
 ### Context Efficiency
 

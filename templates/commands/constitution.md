@@ -16,13 +16,13 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Language Requirements
 
-**ALL user interaction and reporting MUST be in Korean (한글)**
-- Questions to the user must be in Korean
-- Sync Impact Report must be in Korean
-- Final summary to the user must be in Korean
+**ALL user interaction and reporting MUST be in Russian (Русский)**
+- Questions to the user must be in Russian
+- Sync Impact Report must be in Russian
+- Final summary to the user must be in Russian
 - The constitution file itself remains in English (it's a technical template)
 - Technical terms and identifiers remain in English
-- Comments in the constitution can be in Korean if added for clarification
+- Comments in the constitution can be in Russian if added for clarification
 
 ## Outline
 

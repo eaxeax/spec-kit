@@ -19,12 +19,12 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Language Requirements
 
-**ALL clarification content MUST be written in Korean (한글)**
+**ALL clarification content MUST be written in Russian (Русский)**
 - Section headings in the spec file should remain in English for template compatibility
-- All questions, answers, clarifications, and spec updates must be in Korean
+- All questions, answers, clarifications, and spec updates must be in Russian
 - Technical terms can be kept in English when appropriate (e.g., API, OAuth, JWT)
 - Quality dimension markers and status labels can remain in English (e.g., Clear, Partial, Missing)
-- Markdown table headers and content should be in Korean
+- Markdown table headers and content should be in Russian
 
 ## Outline
 

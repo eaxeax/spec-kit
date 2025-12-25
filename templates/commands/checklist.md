@@ -7,9 +7,9 @@ scripts:
 
 ## Language Requirements
 
-**ALL checklist content MUST be written in Korean (한글)**
+**ALL checklist content MUST be written in Russian (Русский)**
 - Section headings in the checklist file should remain in English for template compatibility
-- All checklist items, questions, and descriptions must be in Korean
+- All checklist items, questions, and descriptions must be in Russian
 - Technical terms can be kept in English when appropriate (e.g., API, UX, NFR)
 - Quality dimension markers remain in English (e.g., [Completeness], [Clarity], [Gap])
 - Spec section references remain as-is (e.g., [Spec §FR-1])

@@ -26,12 +26,12 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Language Requirements
 
-**ALL planning content MUST be written in Korean (한글)**
+**ALL planning content MUST be written in Russian (Русский)**
 - Section headings in planning documents should remain in English for template compatibility
-- All descriptions, decisions, rationales, and technical context must be in Korean
+- All descriptions, decisions, rationales, and technical context must be in Russian
 - Technical terms can be kept in English when appropriate (e.g., API, REST, GraphQL)
 - File paths and code identifiers remain in English
-- User interaction and reporting must be in Korean
+- User interaction and reporting must be in Russian
 
 ## Outline
 

@@ -446,7 +446,7 @@ app = typer.Typer(
 def show_banner():
     """Display the ASCII art banner."""
     banner_lines = BANNER.strip().split('\n')
-    colors = ["bright_blue", "blue", "cyan", "bright_cyan", "white", "bright_white"]
+    colors = ["bright_white", "white", "blue", "bright_blue","blue", "red", "bright_red"]
 
     styled_banner = Text()
     for i, line in enumerate(banner_lines):

@@ -42,6 +42,10 @@ Spec-Driven Development **flips the script** on traditional software development
 
 ## ⚡ Get Started
 
+> ℹ️ **Advanced workflow**: Spec Kit also supports an optional **Beads‑mode** for task‑driven development with strict context control and lower token usage.
+> See [README.BEADS.md](./README.BEADS.md) for details.
+
+
 ### 1. Install Specify CLI
 
 Choose your preferred installation method:
@@ -57,8 +61,11 @@ uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
 Then use the tool directly:
 
 ```bash
-# Create new project
+# Create new project (default workflow)
 specify init <PROJECT_NAME>
+
+# Create new project in Beads mode (advanced)
+specify init <PROJECT_NAME> --beads
 
 # Or initialize in existing project
 specify init . --ai claude

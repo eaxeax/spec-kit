@@ -1190,6 +1190,11 @@ def init(
     script_type: str = typer.Option(
         None, "--script", help="Script type to use: sh or ps"
     ),
+    beads: bool = typer.Option(
+        False,
+        "--beads",
+        help="Initialize project in Beads mode (requires Beads CLI and POSIX shell)",
+    ),
     ignore_agent_tools: bool = typer.Option(
         False,
         "--ignore-agent-tools",
@@ -1248,6 +1253,36 @@ def init(
     """
 
     show_banner()
+
+    # --- Beads mode preflight checks ---
+    if beads:
+        # Windows is not supported (use WSL)
+        if os.name == "nt":
+            console.print("[red]Beads mode requires a POSIX shell environment.[/red]")
+            console.print("[yellow]On Windows, please use WSL.[/yellow]")
+            raise typer.Exit(1)
+
+        # PowerShell scripts are not supported in Beads mode
+        if script_type == "ps":
+            console.print("[red]Beads mode supports only 'sh' scripts.[/red]")
+            raise typer.Exit(1)
+
+        # Beads CLI must be available
+        if not check_tool("bd"):
+            console.print("[red]Beads CLI ('bd') not found.[/red]")
+            console.print(
+                "[yellow]Install Beads and retry, or run without --beads.[/yellow]"
+            )
+            raise typer.Exit(1)
+
+        # Initialize Beads workspace
+        console.print("[cyan]Initializing Beads workspace...[/cyan]")
+        run_command(["bd", "init"], check_return=True)
+
+        console.print("[green]Beads mode enabled[/green]")
+        console.print("[cyan]Workflow:[/cyan] Beads-first")
+        console.print("[cyan]Shell:[/cyan] sh")
+        console.print()
 
     if project_name == ".":
         here = True

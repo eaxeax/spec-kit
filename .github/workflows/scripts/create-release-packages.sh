@@ -6,8 +6,10 @@ set -euo pipefail
 # Usage: .github/workflows/scripts/create-release-packages.sh <version>
 #   Version argument should include leading 'v'.
 #   Optionally set AGENTS and/or SCRIPTS env vars to limit what gets built.
-#     AGENTS  : space or comma separated subset of: claude gemini copilot cursor-agent qwen opencode windsurf codex amp shai bob (default: all)
-#     SCRIPTS : space or comma separated subset of: sh ps (default: both)
+#   Optionally set TEMPLATES_DIR to choose template source (default: templates).
+#     AGENTS        : space or comma separated subset of: claude gemini copilot cursor-agent qwen opencode windsurf codex amp shai bob (default: all)
+#     SCRIPTS       : space or comma separated subset of: sh ps (default: both)
+#     TEMPLATES_DIR : templates directory to package (e.g., templates-beads)
 #   Examples:
 #     AGENTS=claude SCRIPTS=sh $0 v0.2.0
 #     AGENTS="copilot,gemini" $0 v0.2.0
@@ -30,17 +32,29 @@ GENRELEASES_DIR=".genreleases"
 mkdir -p "$GENRELEASES_DIR"
 rm -rf "$GENRELEASES_DIR"/* || true
 
+TEMPLATES_DIR="${TEMPLATES_DIR:-templates}"
+if [[ ! -d "$TEMPLATES_DIR" ]]; then
+  echo "Error: TEMPLATES_DIR '$TEMPLATES_DIR' not found" >&2
+  exit 1
+fi
+if [[ ! -d "$TEMPLATES_DIR/commands" ]]; then
+  echo "Error: TEMPLATES_DIR '$TEMPLATES_DIR' must contain commands/" >&2
+  exit 1
+fi
+
 rewrite_paths() {
+  # Avoid double-substitution when content already contains .specify/...
   sed -E \
-    -e 's@(/?)memory/@.specify/memory/@g' \
-    -e 's@(/?)scripts/@.specify/scripts/@g' \
-    -e 's@(/?)templates/@.specify/templates/@g'
+    -e 's@(^|[^.])memory/@\1.specify/memory/@g' \
+    -e 's@(^|[^.])scripts/@\1.specify/scripts/@g' \
+    -e 's@(^|[^.])templates-beads/@\1.specify/templates/@g' \
+    -e 's@(^|[^.])templates/@\1.specify/templates/@g'
 }
 
 generate_commands() {
   local agent=$1 ext=$2 arg_format=$3 output_dir=$4 script_variant=$5
   mkdir -p "$output_dir"
-  for template in templates/commands/*.md; do
+  for template in "$TEMPLATES_DIR"/commands/*.md; do
     [[ -f "$template" ]] || continue
     local name description script_command agent_script_command body
     name=$(basename "$template" .md)
@@ -49,8 +63,9 @@ generate_commands() {
     file_content=$(tr -d '\r' < "$template")
     
     # Extract description and script command from YAML frontmatter
-    description=$(printf '%s\n' "$file_content" | awk '/^description:/ {sub(/^description:[[:space:]]*/, ""); print; exit}')
-    script_command=$(printf '%s\n' "$file_content" | awk -v sv="$script_variant" '/^[[:space:]]*'"$script_variant"':[[:space:]]*/ {sub(/^[[:space:]]*'"$script_variant"':[[:space:]]*/, ""); print; exit}')
+    # NOTE: avoid pipelines with early-exit awk under pipefail (SIGPIPE can abort the script)
+    description=$(awk '/^description:/ {sub(/^description:[[:space:]]*/, ""); print; exit}' <<<"$file_content")
+    script_command=$(awk -v sv="$script_variant" '/^[[:space:]]*'"$script_variant"':[[:space:]]*/ {sub(/^[[:space:]]*'"$script_variant"':[[:space:]]*/, ""); print; exit}' <<<"$file_content")
     
     if [[ -z $script_command ]]; then
       echo "Warning: no script command found for $script_variant in $template" >&2
@@ -58,15 +73,15 @@ generate_commands() {
     fi
     
     # Extract agent_script command from YAML frontmatter if present
-    agent_script_command=$(printf '%s\n' "$file_content" | awk '
+    agent_script_command=$(awk -v sv="$script_variant" '
       /^agent_scripts:$/ { in_agent_scripts=1; next }
-      in_agent_scripts && /^[[:space:]]*'"$script_variant"':[[:space:]]*/ {
-        sub(/^[[:space:]]*'"$script_variant"':[[:space:]]*/, "")
+      in_agent_scripts && $0 ~ "^[[:space:]]*" sv ":[[:space:]]*" {
+        sub("^[[:space:]]*" sv ":[[:space:]]*", "")
         print
         exit
       }
       in_agent_scripts && /^[a-zA-Z]/ { in_agent_scripts=0 }
-    ')
+    ' <<<"$file_content")
     
     # Replace {SCRIPT} placeholder with the script command
     body=$(printf '%s\n' "$file_content" | sed "s|{SCRIPT}|${script_command}|g")
@@ -150,7 +165,17 @@ build_variant() {
     esac
   fi
   
-  [[ -d templates ]] && { mkdir -p "$SPEC_DIR/templates"; find templates -type f -not -path "templates/commands/*" -not -name "vscode-settings.json" -exec cp --parents {} "$SPEC_DIR"/ \; ; echo "Copied templates -> .specify/templates"; }
+  if [[ -d "$TEMPLATES_DIR" ]]; then
+    mkdir -p "$SPEC_DIR/templates"
+
+    # Copy template files into the package as .specify/templates/* regardless of source folder name.
+    # Use an absolute destination because we cd into $TEMPLATES_DIR.
+    local repo_root
+    repo_root=$(pwd)
+    ( cd "$TEMPLATES_DIR" && find . -type f -not -path "./commands/*" -not -name "vscode-settings.json" -exec cp --parents {} "$repo_root/$SPEC_DIR/templates/" \; )
+
+    echo "Copied $TEMPLATES_DIR -> .specify/templates"
+  fi
   
   # NOTE: We substitute {ARGS} internally. Outward tokens differ intentionally:
   #   * Markdown/prompt (claude, copilot, cursor-agent, opencode): $ARGUMENTS
@@ -171,9 +196,9 @@ build_variant() {
       # Generate companion prompt files
       generate_copilot_prompts "$base_dir/.github/agents" "$base_dir/.github/prompts"
       # Create VS Code workspace settings
-      mkdir -p "$base_dir/.vscode"
-      [[ -f templates/vscode-settings.json ]] && cp templates/vscode-settings.json "$base_dir/.vscode/settings.json"
-      ;;
+       mkdir -p "$base_dir/.vscode"
+       [[ -f "$TEMPLATES_DIR/vscode-settings.json" ]] && cp "$TEMPLATES_DIR/vscode-settings.json" "$base_dir/.vscode/settings.json"
+       ;;
     cursor-agent)
       mkdir -p "$base_dir/.cursor/commands"
       generate_commands cursor-agent md "\$ARGUMENTS" "$base_dir/.cursor/commands" "$script" ;;

@@ -50,10 +50,18 @@ from typer.core import TyperGroup
 # For cross-platform keyboard input
 import readchar
 import ssl
-import truststore
 from datetime import datetime, timezone
 
-ssl_context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+try:
+    import truststore as _truststore
+except Exception:  # pragma: no cover
+    _truststore = None
+
+ssl_context = (
+    _truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    if _truststore is not None
+    else ssl.create_default_context()
+)
 client = httpx.Client(verify=ssl_context)
 
 
@@ -64,10 +72,12 @@ def _github_token(cli_token: str | None = None) -> str | None:
     ) or None
 
 
-def _github_auth_headers(cli_token: str | None = None) -> dict:
+def _github_auth_headers(cli_token: str | None = None) -> dict[str, str]:
     """Return Authorization header dict only when a non-empty token exists."""
     token = _github_token(cli_token)
-    return {"Authorization": f"Bearer {token}"} if token else {}
+    if token is None:
+        return {}
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _parse_rate_limit_headers(headers: httpx.Headers) -> dict:
@@ -549,7 +559,7 @@ def run_command(
         return None
 
 
-def check_tool(tool: str, tracker: StepTracker = None) -> bool:
+def check_tool(tool: str, tracker: StepTracker | None = None) -> bool:
     """Check if a tool is installed. Optionally update tracker.
 
     Args:
@@ -581,7 +591,7 @@ def check_tool(tool: str, tracker: StepTracker = None) -> bool:
     return found
 
 
-def is_git_repo(path: Path = None) -> bool:
+def is_git_repo(path: Path | None = None) -> bool:
     """Check if the specified path is inside a git repository."""
     if path is None:
         path = Path.cwd()
@@ -602,9 +612,7 @@ def is_git_repo(path: Path = None) -> bool:
         return False
 
 
-def init_git_repo(
-    project_path: Path, quiet: bool = False
-) -> Tuple[bool, Optional[str]]:
+def init_git_repo(project_path: Path, quiet: bool = False) -> tuple[bool, str | None]:
     """Initialize a git repository in the specified path.
 
     Args:
@@ -614,8 +622,8 @@ def init_git_repo(
     Returns:
         Tuple of (success: bool, error_message: Optional[str])
     """
+    original_cwd = Path.cwd()
     try:
-        original_cwd = Path.cwd()
         os.chdir(project_path)
         if not quiet:
             console.print("[cyan]Initializing git repository...[/cyan]")
@@ -794,10 +802,10 @@ def download_template_from_github(
     script_type: str = "sh",
     verbose: bool = True,
     show_progress: bool = True,
-    client: httpx.Client = None,
+    client: httpx.Client | None = None,
     debug: bool = False,
-    github_token: str = None,
-) -> Tuple[Path, dict]:
+    github_token: str | None = None,
+) -> tuple[Path, dict]:
     repo_owner = "eaxeax"
     repo_name = "spec-kit"
     if client is None:
@@ -925,6 +933,160 @@ def download_template_from_github(
     return zip_path, metadata
 
 
+def _gitlab_templates_project_url() -> str | None:
+    """Return sanitized GitLab project URL or None.
+
+    When set, the CLI will fetch templates from this GitLab project instead of GitHub.
+
+    Example:
+        SPECIFY_TEMPLATE_GITLAB_PROJECT_URL=https://gitlab.example.com/group/spec-kit
+    """
+    return (os.getenv("SPECIFY_TEMPLATE_GITLAB_PROJECT_URL") or "").strip() or None
+
+
+def _gitlab_templates_ref() -> str:
+    return (os.getenv("SPECIFY_TEMPLATE_GITLAB_REF") or "main").strip() or "main"
+
+
+def _gitlab_templates_archive_url(project_url: str, ref: str) -> str:
+    """Build GitLab archive URL from a project URL.
+
+    project_url example:
+      https://gitlab.example.com/group/subgroup/repo
+
+    archive URL form:
+      https://gitlab.example.com/group/subgroup/repo/-/archive/<ref>/repo-<ref>.tar.gz
+    """
+    base = project_url.rstrip("/")
+    project_name = base.rsplit("/", 1)[-1]
+    return f"{base}/-/archive/{ref}/{project_name}-{ref}.tar.gz"
+
+
+def _download_file(
+    url: str, dest: Path, *, client: httpx.Client, debug: bool = False
+) -> None:
+    try:
+        with client.stream("GET", url, timeout=120, follow_redirects=True) as response:
+            if response.status_code != 200:
+                body = response.text[:500] if debug else ""
+                raise RuntimeError(
+                    f"HTTP {response.status_code} downloading {url}"
+                    + (f"\n\n{body}" if body else "")
+                )
+            with open(dest, "wb") as f:
+                for chunk in response.iter_bytes(chunk_size=8192):
+                    f.write(chunk)
+    except Exception as e:
+        raise RuntimeError(f"Failed to download {url}: {e}")
+
+
+def download_template_from_gitlab_project(
+    ai_assistant: str,
+    download_dir: Path,
+    *,
+    script_type: str = "sh",
+    beads: bool = False,
+    verbose: bool = True,
+    client: httpx.Client,
+    debug: bool = False,
+) -> tuple[Path, dict]:
+    """Fetch templates source from GitLab project and build a local zip.
+
+    Controlled by env:
+      - SPECIFY_TEMPLATE_GITLAB_PROJECT_URL
+      - SPECIFY_TEMPLATE_GITLAB_REF (default: main)
+
+    This downloads a tar.gz archive of the repo, extracts it to a temp dir,
+    runs create-release-packages.sh inside it, and returns the resulting zip path.
+    """
+    project_url = _gitlab_templates_project_url()
+    if project_url is None:
+        raise RuntimeError("SPECIFY_TEMPLATE_GITLAB_PROJECT_URL is not set")
+
+    ref = _gitlab_templates_ref()
+    archive_url = _gitlab_templates_archive_url(project_url, ref)
+
+    # Allow overriding the archive URL directly (useful for self-hosted GitLab variations).
+    archive_url = (
+        os.getenv("SPECIFY_TEMPLATE_GITLAB_ARCHIVE_URL") or archive_url
+    ).strip()
+
+    if verbose:
+        console.print(f"[cyan]Fetching templates from GitLab:[/cyan] {archive_url}")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        archive_path = temp_path / "templates.tar.gz"
+        _download_file(archive_url, archive_path, client=client, debug=debug)
+
+        extract_dir = temp_path / "repo"
+        extract_dir.mkdir(parents=True, exist_ok=True)
+        run_command(
+            ["tar", "-xzf", str(archive_path), "-C", str(extract_dir)],
+            check_return=True,
+        )
+
+        extracted_items = list(extract_dir.iterdir())
+        if len(extracted_items) != 1 or not extracted_items[0].is_dir():
+            raise RuntimeError(
+                "Unexpected GitLab archive layout (expected single top-level directory)"
+            )
+        repo_root = extracted_items[0]
+
+        templates_dir_name = "templates-beads" if beads else "templates"
+        templates_dir = repo_root / templates_dir_name
+        if not templates_dir.exists():
+            raise RuntimeError(f"Expected {templates_dir_name}/ in GitLab repo archive")
+
+        # Build zips into repo_root/.genreleases
+        env = os.environ.copy()
+        env["AGENTS"] = ai_assistant
+        env["SCRIPTS"] = script_type
+        env["TEMPLATES_DIR"] = templates_dir_name
+
+        # Use a stable, valid version string.
+        env.setdefault("CI_PIPELINE_ID", "local")
+        version = f"v0.0.0-gitlab{env['CI_PIPELINE_ID']}"
+
+        script = repo_root / ".github/workflows/scripts/create-release-packages.sh"
+        if not script.exists():
+            raise RuntimeError(
+                "GitLab repo is missing .github/workflows/scripts/create-release-packages.sh"
+            )
+        script.chmod(script.stat().st_mode | 0o111)
+
+        try:
+            subprocess.run([str(script), version], cwd=repo_root, env=env, check=True)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Failed to build template from GitLab source: {e}")
+
+        built_dir = repo_root / ".genreleases"
+        zip_candidates = list(
+            built_dir.glob(
+                f"spec-kit-template-{ai_assistant}-{script_type}-{version}.zip"
+            )
+        )
+        if not zip_candidates:
+            # fallback: any matching zip for agent/script
+            zip_candidates = list(
+                built_dir.glob(f"spec-kit-template-{ai_assistant}-{script_type}-*.zip")
+            )
+        if not zip_candidates:
+            raise RuntimeError("No built template zip found after GitLab build")
+
+        zip_src = zip_candidates[0]
+        zip_dest = download_dir / zip_src.name
+        shutil.copy2(zip_src, zip_dest)
+
+    metadata = {
+        "filename": zip_dest.name,
+        "size": zip_dest.stat().st_size,
+        "release": "gitlab-source",
+        "asset_url": archive_url,
+    }
+    return zip_dest, metadata
+
+
 def download_and_extract_template(
     project_path: Path,
     ai_assistant: str,
@@ -933,24 +1095,29 @@ def download_and_extract_template(
     *,
     verbose: bool = True,
     tracker: StepTracker | None = None,
-    client: httpx.Client = None,
+    client: httpx.Client | None = None,
     debug: bool = False,
-    github_token: str = None,
+    github_token: str | None = None,
     local_dir: Path | None = None,
+    beads: bool = False,
 ) -> Path:
     """Download the latest release and extract it to create a new project.
     Returns project_path. Uses tracker if provided (with keys: fetch, download, extract, cleanup)
 
     If local_dir is provided, loads template from local directory instead of GitHub.
+    If SPECIFY_TEMPLATE_GITLAB_PROJECT_URL is set, builds the template from GitLab source.
     """
     current_dir = Path.cwd()
     is_local = local_dir is not None
+    use_gitlab = _gitlab_templates_project_url() is not None
     zip_path: Path | None = None
     meta: dict | None = None
 
     if tracker:
         if is_local:
             tracker.start("fetch", "loading from local directory")
+        elif use_gitlab:
+            tracker.start("fetch", "fetching templates from GitLab")
         else:
             tracker.start("fetch", "contacting GitHub API")
     try:
@@ -960,6 +1127,17 @@ def download_and_extract_template(
                 local_dir,
                 script_type=script_type,
                 verbose=verbose and tracker is None,
+            )
+        elif use_gitlab:
+            assert client is not None
+            zip_path, meta = download_template_from_gitlab_project(
+                ai_assistant,
+                current_dir,
+                script_type=script_type,
+                beads=beads,
+                verbose=verbose and tracker is None,
+                client=client,
+                debug=debug,
             )
         else:
             zip_path, meta = download_template_from_github(
@@ -1205,16 +1383,16 @@ def ensure_executable_scripts(
 
 @app.command()
 def init(
-    project_name: str = typer.Argument(
+    project_name: str | None = typer.Argument(
         None,
         help="Name for your new project directory (optional if using --here, or use '.' for current directory)",
     ),
-    ai_assistant: str = typer.Option(
+    ai_assistant: str | None = typer.Option(
         None,
         "--ai",
         help="AI assistant to use: claude, gemini, copilot, cursor-agent, qwen, opencode, codex, windsurf, kilocode, auggie, codebuddy, amp, shai, q, bob, or qoder ",
     ),
-    script_type: str = typer.Option(
+    script_type: str | None = typer.Option(
         None, "--script", help="Script type to use: sh or ps"
     ),
     beads: bool = typer.Option(
@@ -1248,12 +1426,12 @@ def init(
         "--debug",
         help="Show verbose diagnostic output for network and extraction failures",
     ),
-    github_token: str = typer.Option(
+    github_token: str | None = typer.Option(
         None,
         "--github-token",
         help="GitHub token to use for API requests (or set GH_TOKEN or GITHUB_TOKEN environment variable)",
     ),
-    local_templates: str = typer.Option(
+    local_templates: str | None = typer.Option(
         None,
         "--local-templates",
         help="Path to local .genreleases directory for development testing (bypasses GitHub download)",
@@ -1265,7 +1443,7 @@ def init(
     This command will:
     1. Check that required tools are installed (git is optional)
     2. Let you choose your AI assistant
-    3. Download the appropriate template from GitHub
+    3. Download the appropriate template from GitHub (or build from GitLab source if configured)
     4. Extract the template to a new project directory or current directory
     5. Initialize a fresh git repository (if not --no-git and no existing repo)
     6. Optionally set up AI assistant commands
@@ -1355,6 +1533,7 @@ def init(
                     console.print("[yellow]Operation cancelled[/yellow]")
                     raise typer.Exit(0)
     else:
+        assert project_name is not None
         project_path = Path(project_name).resolve()
         if project_path.exists():
             error_panel = Panel(
@@ -1446,7 +1625,7 @@ def init(
 
     tracker = StepTracker("Initialize Specify Project")
 
-    sys._specify_tracker_active = True
+    setattr(sys, "_specify_tracker_active", True)
 
     tracker.add("precheck", "Check required tools")
     tracker.complete("precheck", "ok")
@@ -1493,6 +1672,7 @@ def init(
                 debug=debug,
                 github_token=github_token,
                 local_dir=local_dir,
+                beads=beads,
             )
 
             ensure_executable_scripts(project_path, tracker=tracker)

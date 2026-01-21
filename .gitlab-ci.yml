@@ -1,0 +1,27 @@
+workflow:
+  rules:
+    - when: always
+
+stages:
+  - build
+
+variables:
+  # Build only beads template source
+  TEMPLATES_DIR: "templates-beads"
+  # Keep the version string compatible with create-release-packages.sh (vX.Y.Z-suffix)
+  VERSION: "v0.0.0-ci${CI_PIPELINE_ID}"
+  AGENTS: "opencode,claude"
+  SCRIPTS: "sh"
+
+build_beads_templates:
+  stage: build
+  image: ubuntu:24.04
+  script:
+    - apt-get update
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends zip ca-certificates
+    - chmod +x .github/workflows/scripts/create-release-packages.sh
+    - .github/workflows/scripts/create-release-packages.sh "$VERSION"
+  artifacts:
+    paths:
+      - .genreleases/*.zip
+    expire_in: never

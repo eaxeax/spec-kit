@@ -1309,7 +1309,8 @@ def init(
 
         # Initialize Beads workspace
         console.print("[cyan]Initializing Beads workspace...[/cyan]")
-        run_command(["bd", "init"], check_return=True)
+        # bd init is safe to run multiple times; it returns non-zero if already initialized.
+        run_command(["bd", "init"], check_return=False)
 
         console.print("[green]Beads mode enabled[/green]")
         console.print("[cyan]Workflow:[/cyan] Beads-first")
@@ -1613,6 +1614,22 @@ def init(
     steps_lines.append("   2.3 [cyan]/speckit.plan[/] - Create implementation plan")
     steps_lines.append("   2.4 [cyan]/speckit.tasks[/] - Generate actionable tasks")
     steps_lines.append("   2.5 [cyan]/speckit.implement[/] - Execute implementation")
+
+    if beads:
+        steps_lines.append("")
+        steps_lines.append("   Beads workflow:")
+        steps_lines.append(
+            "   2.6 [cyan]/speckit.taskstobeads[/] - Create beads issues from tasks.md"
+        )
+        steps_lines.append(
+            "   2.7 [cyan]/speckit.beads-implement[/] - Implement tasks via bd workflow"
+        )
+        steps_lines.append(
+            "   2.8 [cyan]/speckit.beads-sync[/] - Sync beads statuses back to tasks.md"
+        )
+        steps_lines.append(
+            "   2.9 [cyan]/speckit.beadstojira[/] - Export beads issues to Jira"
+        )
 
     steps_panel = Panel(
         "\n".join(steps_lines), title="Next Steps", border_style="cyan", padding=(1, 2)

@@ -42,6 +42,10 @@ Spec-Driven Development **flips the script** on traditional software development
 
 ## ⚡ Get Started
 
+> ℹ️ **Advanced workflow**: Spec Kit also supports an optional **Beads‑mode** for task‑driven development with strict context control and lower token usage.
+> See [README.BEADS.md](./README.BEADS.md) for details.
+
+
 ### 1. Install Specify CLI
 
 Choose your preferred installation method:
@@ -57,8 +61,11 @@ uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
 Then use the tool directly:
 
 ```bash
-# Create new project
+# Create new project (default workflow)
 specify init <PROJECT_NAME>
+
+# Create new project in Beads mode (advanced)
+specify init <PROJECT_NAME> --beads
 
 # Or initialize in existing project
 specify init . --ai claude
@@ -188,6 +195,7 @@ The `specify` command supports the following options:
 | `--skip-tls`           | Flag     | Skip SSL/TLS verification (not recommended)                                                                                                                                                  |
 | `--debug`              | Flag     | Enable detailed debug output for troubleshooting                                                                                                                                             |
 | `--github-token`       | Option   | GitHub token for API requests (or set GH_TOKEN/GITHUB_TOKEN env variable)                                                                                                                    |
+| `--local-templates`    | Option   | Path to local templates directory for development testing (bypasses GitHub download)                                                                                                         |
 
 ### Examples
 
@@ -237,6 +245,9 @@ specify init my-project --ai claude --debug
 
 # Use GitHub token for API requests (helpful for corporate environments)
 specify init my-project --ai claude --github-token ghp_your_token_here
+
+# Use local templates for development testing (contributors only)
+specify init my-project --ai claude --local-templates ".genreleases"
 
 # Check system requirements
 specify check

@@ -33,13 +33,20 @@
 param(
     [Parameter(Mandatory=$true, Position=0)]
     [string]$Version,
-    
+
     [Parameter(Mandatory=$false)]
     [string]$Agents = "",
-    
+
     [Parameter(Mandatory=$false)]
-    [string]$Scripts = ""
+    [string]$Scripts = "",
+
+    [Parameter(Mandatory=$false)]
+    [string]$TemplatesDir = $env:TEMPLATES_DIR
 )
+
+if ([string]::IsNullOrEmpty($TemplatesDir)) {
+    $TemplatesDir = "templates"
+}
 
 $ErrorActionPreference = "Stop"
 
@@ -51,6 +58,15 @@ if ($Version -notmatch '^v\d+\.\d+\.\d+$') {
 
 Write-Host "Building release packages for $Version"
 
+if (-not (Test-Path $TemplatesDir)) {
+    Write-Error "Templates directory not found: $TemplatesDir"
+    exit 1
+}
+if (-not (Test-Path (Join-Path $TemplatesDir "commands"))) {
+    Write-Error "Templates directory must contain commands/: $TemplatesDir"
+    exit 1
+}
+
 # Create and use .genreleases directory for all build artifacts
 $GenReleasesDir = ".genreleases"
 if (Test-Path $GenReleasesDir) {
@@ -60,10 +76,11 @@ New-Item -ItemType Directory -Path $GenReleasesDir -Force | Out-Null
 
 function Rewrite-Paths {
     param([string]$Content)
-    
+
     $Content = $Content -replace '(/?)\bmemory/', '.specify/memory/'
     $Content = $Content -replace '(/?)\bscripts/', '.specify/scripts/'
     $Content = $Content -replace '(/?)\btemplates/', '.specify/templates/'
+    $Content = $Content -replace '(/?)\btemplates-beads/', '.specify/templates/'
     return $Content
 }
 
@@ -78,7 +95,7 @@ function Generate-Commands {
     
     New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
     
-    $templates = Get-ChildItem -Path "templates/commands/*.md" -File -ErrorAction SilentlyContinue
+    $templates = Get-ChildItem -Path (Join-Path $TemplatesDir "commands/*.md") -File -ErrorAction SilentlyContinue
     
     foreach ($template in $templates) {
         $name = [System.IO.Path]::GetFileNameWithoutExtension($template.Name)
@@ -248,20 +265,22 @@ function Build-Variant {
     }
     
     # Copy templates (excluding commands directory and vscode-settings.json)
-    if (Test-Path "templates") {
+    if (Test-Path $TemplatesDir) {
         $templatesDestDir = Join-Path $specDir "templates"
         New-Item -ItemType Directory -Path $templatesDestDir -Force | Out-Null
-        
-        Get-ChildItem -Path "templates" -Recurse -File | Where-Object {
-            $_.FullName -notmatch 'templates[/\\]commands[/\\]' -and $_.Name -ne 'vscode-settings.json'
+
+        $templatesResolved = (Resolve-Path $TemplatesDir).Path
+
+        Get-ChildItem -Path $TemplatesDir -Recurse -File | Where-Object {
+            $_.FullName -notmatch ([regex]::Escape($templatesResolved) + '[/\\]commands[/\\]') -and $_.Name -ne 'vscode-settings.json'
         } | ForEach-Object {
-            $relativePath = $_.FullName.Substring((Resolve-Path "templates").Path.Length + 1)
+            $relativePath = $_.FullName.Substring($templatesResolved.Length + 1)
             $destFile = Join-Path $templatesDestDir $relativePath
             $destFileDir = Split-Path $destFile -Parent
             New-Item -ItemType Directory -Path $destFileDir -Force | Out-Null
             Copy-Item -Path $_.FullName -Destination $destFile -Force
         }
-        Write-Host "Copied templates -> .specify/templates"
+        Write-Host "Copied $TemplatesDir -> .specify/templates (source: $TemplatesDir)"
     }
     
     # Generate agent-specific command files
@@ -288,8 +307,9 @@ function Build-Variant {
             # Create VS Code workspace settings
             $vscodeDir = Join-Path $baseDir ".vscode"
             New-Item -ItemType Directory -Path $vscodeDir -Force | Out-Null
-            if (Test-Path "templates/vscode-settings.json") {
-                Copy-Item -Path "templates/vscode-settings.json" -Destination (Join-Path $vscodeDir "settings.json")
+            $vscodeSettings = Join-Path $TemplatesDir "vscode-settings.json"
+            if (Test-Path $vscodeSettings) {
+                Copy-Item -Path $vscodeSettings -Destination (Join-Path $vscodeDir "settings.json")
             }
         }
         'cursor-agent' {
